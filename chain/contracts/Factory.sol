@@ -86,6 +86,13 @@ contract Factory is OpportunityConfig {
         return managerPersonalWallet[manager];
     }
 
+    function getManagerOppAddress(
+        address manager,
+        string memory oppId
+    ) public view returns (address) {
+        return managerToOpportunity[manager][oppId];
+    }
+
     function createOpportunity(
         address manager,
         OppConfig memory details

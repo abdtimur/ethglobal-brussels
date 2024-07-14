@@ -1,5 +1,5 @@
 import { ethers } from 'ethers';
-import { FACTORY_ABI } from '../artifacts/abi';
+import { FACTORY_ABI, OPP_ABI } from '../artifacts/abi';
 
 export function getProvider() {
   const chainRpc = process.env.BASE_SEPOLIA_RPC_URL;
@@ -53,4 +53,11 @@ export function getFactory(
   runner?: ethers.Signer | ethers.Provider,
 ): ethers.Contract {
   return new ethers.Contract(address, FACTORY_ABI, runner ?? getProvider());
+}
+
+export function getOpportunityContract(
+  address: string,
+  runner?: ethers.Signer | ethers.Provider,
+): ethers.Contract {
+  return new ethers.Contract(address, OPP_ABI, runner ?? getProvider());
 }

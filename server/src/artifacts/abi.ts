@@ -189,6 +189,30 @@ export const FACTORY_ABI = [
         name: 'manager',
         type: 'address',
       },
+      {
+        internalType: 'string',
+        name: 'oppId',
+        type: 'string',
+      },
+    ],
+    name: 'getManagerOppAddress',
+    outputs: [
+      {
+        internalType: 'address',
+        name: '',
+        type: 'address',
+      },
+    ],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [
+      {
+        internalType: 'address',
+        name: 'manager',
+        type: 'address',
+      },
     ],
     name: 'isManagerVerified',
     outputs: [
@@ -354,6 +378,244 @@ export const FACTORY_ABI = [
   {
     inputs: [],
     name: 'withdrawToOwner',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+];
+
+export const OPP_ABI = [
+  {
+    inputs: [
+      {
+        internalType: 'address',
+        name: '_manager',
+        type: 'address',
+      },
+      {
+        internalType: 'address',
+        name: 'factory_',
+        type: 'address',
+      },
+      {
+        components: [
+          {
+            internalType: 'string',
+            name: 'id',
+            type: 'string',
+          },
+          {
+            internalType: 'string',
+            name: 'subject',
+            type: 'string',
+          },
+          {
+            internalType: 'uint256',
+            name: 'amount',
+            type: 'uint256',
+          },
+          {
+            internalType: 'uint256',
+            name: 'rewardPercentage',
+            type: 'uint256',
+          },
+        ],
+        internalType: 'struct OpportunityConfig.OppConfig',
+        name: '_config',
+        type: 'tuple',
+      },
+      {
+        internalType: 'address',
+        name: '_statusConsumer',
+        type: 'address',
+      },
+      {
+        internalType: 'address',
+        name: '_oracle',
+        type: 'address',
+      },
+    ],
+    stateMutability: 'nonpayable',
+    type: 'constructor',
+  },
+  {
+    anonymous: false,
+    inputs: [
+      {
+        indexed: false,
+        internalType: 'string',
+        name: 'id',
+        type: 'string',
+      },
+      {
+        indexed: false,
+        internalType: 'uint256',
+        name: 'newStatus',
+        type: 'uint256',
+      },
+    ],
+    name: 'OppStatusChangeReceived',
+    type: 'event',
+  },
+  {
+    anonymous: false,
+    inputs: [
+      {
+        indexed: false,
+        internalType: 'uint256',
+        name: 'status',
+        type: 'uint256',
+      },
+    ],
+    name: 'OppStatusChanged',
+    type: 'event',
+  },
+  {
+    anonymous: false,
+    inputs: [
+      {
+        indexed: false,
+        internalType: 'uint256',
+        name: 'subscriptionId',
+        type: 'uint256',
+      },
+      {
+        indexed: false,
+        internalType: 'address',
+        name: 'oppAddress',
+        type: 'address',
+      },
+      {
+        indexed: false,
+        internalType: 'string[]',
+        name: 'ids',
+        type: 'string[]',
+      },
+    ],
+    name: 'OppStatusCheckTriggered',
+    type: 'event',
+  },
+  {
+    inputs: [],
+    name: 'config',
+    outputs: [
+      {
+        internalType: 'string',
+        name: 'id',
+        type: 'string',
+      },
+      {
+        internalType: 'string',
+        name: 'subject',
+        type: 'string',
+      },
+      {
+        internalType: 'uint256',
+        name: 'amount',
+        type: 'uint256',
+      },
+      {
+        internalType: 'uint256',
+        name: 'rewardPercentage',
+        type: 'uint256',
+      },
+    ],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'isVerified',
+    outputs: [
+      {
+        internalType: 'bool',
+        name: '',
+        type: 'bool',
+      },
+    ],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'manager',
+    outputs: [
+      {
+        internalType: 'address',
+        name: '',
+        type: 'address',
+      },
+    ],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'reward',
+    outputs: [
+      {
+        internalType: 'uint256',
+        name: '',
+        type: 'uint256',
+      },
+    ],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'status',
+    outputs: [
+      {
+        internalType: 'uint256',
+        name: '',
+        type: 'uint256',
+      },
+    ],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'triggerReward',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [
+      {
+        internalType: 'string',
+        name: '_id',
+        type: 'string',
+      },
+      {
+        internalType: 'uint256',
+        name: 'newStatus',
+        type: 'uint256',
+      },
+    ],
+    name: 'updateOppStatus',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'verified',
+    outputs: [
+      {
+        internalType: 'bool',
+        name: '',
+        type: 'bool',
+      },
+    ],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'verifyStatus',
     outputs: [],
     stateMutability: 'nonpayable',
     type: 'function',

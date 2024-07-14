@@ -11,6 +11,7 @@ import PubSubApiClient from 'salesforce-pubsub-api-client';
 import {
   getAdjustedGasPrice,
   getFactory,
+  getOpportunityContract,
   getSignerWallet,
 } from '../web3/web3Provider';
 import { FACTORY_ADDR } from '../web3/consts';
@@ -41,7 +42,7 @@ export class SalesforceService {
 
   async authorize(code: string) {
     await this.conn.authorize(code);
-    console.log('Authorized:', this.conn.accessToken);
+    // console.log('Authorized:', this.conn.accessToken);
     console.log('Instance URL:', this.conn.instanceUrl);
     await this.subscribeToOpportunityChanges();
   }
@@ -92,7 +93,7 @@ export class SalesforceService {
     const oppObj = await this.conn
       .sobject('Opportunity')
       .retrieve(opportunityId);
-    console.log('Opportunity:', oppObj);
+    // console.log('Opportunity:', oppObj);
     return oppObj as Opportunity;
   }
 
@@ -100,7 +101,7 @@ export class SalesforceService {
     const ownerObj = await this.conn
       .sobject('User')
       .retrieve(ownerId, ['Email']);
-    console.log('Owner:', ownerObj);
+    // console.log('Owner:', ownerObj);
     return ownerObj.Email;
   }
 
@@ -108,15 +109,15 @@ export class SalesforceService {
     const id = data.payload.ChangeEventHeader.recordIds[0];
     console.log('Handling Opportunity change event for ID:', id);
     // Safely log event as a JSON string
-    console.log(
-      JSON.stringify(
-        data,
-        (key, value) =>
-          /* Convert BigInt values into strings and keep other types unchanged */
-          typeof value === 'bigint' ? value.toString() : value,
-        2,
-      ),
-    );
+    // console.log(
+    //   JSON.stringify(
+    //     data,
+    //     (key, value) =>
+    //       /* Convert BigInt values into strings and keep other types unchanged */
+    //       typeof value === 'bigint' ? value.toString() : value,
+    //     2,
+    //   ),
+    // );
 
     if (data.payload.StageName === null) {
       console.log('Ignoring event, no stage change');
@@ -127,77 +128,104 @@ export class SalesforceService {
     const signerWallet = getSignerWallet();
     const factoryContract = getFactory(FACTORY_ADDR, signerWallet);
 
-    const owner = await this.getOwnerEmail(opportunity.OwnerId);
-    console.log('Owner email:', owner);
-    const corporateWallet = await createAccount(owner);
+    try {
+      if (
+        opportunity.StageName === 'Closed Lost' ||
+        opportunity.StageName === 'Closed Won'
+      ) {
+        console.log(
+          `Opportunity ${id} is in ${opportunity.StageName} stage. Triggering on-chain event`,
+        );
 
-    if (!corporateWallet) {
-      console.error('Failed to create corporate wallet');
-      return;
-    }
+        const gasPrice = await getAdjustedGasPrice();
+        const tx = await factoryContract.verifyStatus(
+          signerWallet.address, // for golden path to simplify registration
+          opportunity.Id,
+          { gasPrice: gasPrice, gasLimit: 2000000 },
+        );
 
-    const personalWallet = await factoryContract.managerPersonalWallet(
-      signerWallet.address,
-    ); // TODO: switch to email check
-    console.log('Personal wallet:', personalWallet);
+        console.log('Transaction hash:', tx.hash);
 
-    // Select which account to use for rewards
-    const targetAddress =
-      personalWallet === ethers.ZeroAddress ? corporateWallet : personalWallet;
+        await tx.wait();
 
-    if (
-      opportunity.StageName === 'Closed Lost' ||
-      opportunity.StageName === 'Closed Won'
-    ) {
-      console.log(
-        `Opportunity ${id} is in ${opportunity.StageName} stage. Triggering on-chain event`,
-      );
+        console.log('Transaction confirmed. Check the blockchain for updates:');
+        console.log(`https://base-sepolia.blockscout.com/tx/${tx.hash}`);
 
-      const gasPrice = await getAdjustedGasPrice();
-      const tx = await factoryContract.verifyStatus(
-        signerWallet.address, // for golden path to simplify registration
-        opportunity.Id,
-        { gasPrice: gasPrice, gasLimit: 2000000 },
-      );
+        // wait for a while for the status completion, than check if we can update Opp Description
+        // TODO: replace with the events streaming
+        await new Promise((resolve) => setTimeout(resolve, 10000));
 
-      console.log('Transaction hash:', tx.hash);
+        const oppAddress = await factoryContract.getManagerOppAddress(
+          signerWallet.address,
+          opportunity.Id,
+        );
+        if (oppAddress === ethers.ZeroAddress) {
+          console.warn("Didn't find opportunity addr to update description:(");
+          return;
+        }
+        const oppContract = getOpportunityContract(oppAddress, signerWallet);
+        const reward = await oppContract.reward();
+        const parsedReward = ethers.formatEther(BigInt(reward));
+        const numberValue = parseFloat(parsedReward)
+          .toFixed(5)
+          .replace(/\.?0+$/, '');
 
-      await tx.wait();
+        const text = `Reward for this opportunity is ${numberValue} ETH. Paid with Tx: https://base-sepolia.blockscout.com/tx/${tx.hash}`;
+        await this.publishDescription(opportunity.Id, text);
 
-      console.log('Transaction confirmed. Check the blockchain for updates:');
-      console.log(`https://base-sepolia.blockscout.com/tx/${tx.hash}`);
+        return;
+      }
 
-      return;
-    }
+      if (opportunity.StageName === 'Negotiation/Review') {
+        console.log(
+          'Opportunity is in Negotiation/Review stage, pushing on-chain:',
+        );
+        const owner = await this.getOwnerEmail(opportunity.OwnerId);
+        console.log('Owner email:', owner);
+        const corporateWallet = await createAccount(owner);
 
-    if (opportunity.StageName === 'Negotiation/Review') {
-      console.log(
-        'Opportunity is in Negotiation/Review stage, pushing on-chain:',
-      );
+        if (!corporateWallet) {
+          console.error('Failed to create corporate wallet');
+          return;
+        }
 
-      // trigger create Opp on chain for further updates
-      const config = {
-        id: opportunity.Id,
-        subject: opportunity.Name,
-        amount: ethers.parseEther(opportunity.Amount.toString()), // convert to wei (1 USD = 10^18 wei)
-        rewardPercentage: 1, // always 1% for now
-      };
+        const personalWallet = await factoryContract.managerPersonalWallet(
+          signerWallet.address,
+        ); // TODO: switch to email check
+        console.log('Personal wallet:', personalWallet);
 
-      console.log('Opportunity config:', config);
+        // Select which account to use for rewards
+        const targetAddress =
+          personalWallet === ethers.ZeroAddress
+            ? corporateWallet
+            : personalWallet;
 
-      const gasPrice = await getAdjustedGasPrice();
-      const tx = await factoryContract.createOpportunity(
-        signerWallet, // for golden path to simplify registration
-        config,
-        { gasPrice: gasPrice, gasLimit: 2000000 },
-      );
+        // trigger create Opp on chain for further updates
+        const config = {
+          id: opportunity.Id,
+          subject: opportunity.Name,
+          amount: ethers.parseEther(opportunity.Amount.toString()), // convert to wei (1 USD = 10^18 wei)
+          rewardPercentage: 1, // always 1% for now
+        };
 
-      console.log('Transaction hash:', tx.hash);
-      await tx.wait();
-      console.log('Transaction confirmed. Check the blockchain for updates:');
-      console.log(`https://base-sepolia.blockscout.com/tx/${tx.hash}`);
+        console.log('Opportunity config:', config);
 
-      return;
+        const gasPrice = await getAdjustedGasPrice();
+        const tx = await factoryContract.createOpportunity(
+          signerWallet, // for golden path to simplify registration
+          config,
+          { gasPrice: gasPrice, gasLimit: 2000000 },
+        );
+
+        console.log('Transaction hash:', tx.hash);
+        await tx.wait();
+        console.log('Transaction confirmed. Check the blockchain for updates:');
+        console.log(`https://base-sepolia.blockscout.com/tx/${tx.hash}`);
+
+        return;
+      }
+    } catch (error) {
+      console.error('Failed to handle opportunity change event:', error);
     }
 
     console.log('Ignoring event, stage not important for now');
