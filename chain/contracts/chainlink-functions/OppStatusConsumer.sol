@@ -128,15 +128,17 @@ contract OppStatusConsumer is FunctionsClient, ConfirmedOwner, ISendRequest {
         emit Response(requestId, s_lastResponse, s_lastError);
 
         if (response.length > 0) {
-            // uint256 status_ = abi.decode(response, (uint256));
-            uint256 status_ = 2; // hardcoded for testing, doesnt work with the above line
+            uint256 parsedStatus = uint256(bytes32(response)); // we are sure that the response is a uint256
+            uint256 status_ = parsedStatus / 100; // status is the first digit of the response, 0: Pending, 1: Lost, 2: Won, 3: Paid
 
             string memory oppId = _requestIdToOppId[requestId];
 
             emit ParsedResponse(oppId, status_);
 
             // todo: check interface
-            if (oppAddresses[oppId] != address(0) && status_ > 0) {
+            if (
+                oppAddresses[oppId] != address(0) && status_ > 0 && status_ < 4
+            ) {
                 registeredOppStatus[oppId] = status_;
                 IOppStatusUpdate oppContract = IOppStatusUpdate(
                     oppAddresses[oppId]
