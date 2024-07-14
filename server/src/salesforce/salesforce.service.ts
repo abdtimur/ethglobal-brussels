@@ -8,6 +8,13 @@ import {
   OpportunityFuncStatus,
 } from './types';
 import PubSubApiClient from 'salesforce-pubsub-api-client';
+import {
+  getAdjustedGasPrice,
+  getFactory,
+  getSignerWallet,
+} from '../web3/web3Provider';
+import { FACTORY_ADDR } from '../web3/consts';
+import { ethers } from 'ethers';
 
 @Injectable()
 export class SalesforceService {
@@ -121,29 +128,65 @@ export class SalesforceService {
       opportunity.StageName === 'Closed Lost' ||
       opportunity.StageName === 'Closed Won'
     ) {
-      // trigger verify status on-chain
-      console.log('Opportunity is closed:', opportunity.StageName);
+      console.log(
+        `Opportunity ${id} is in ${opportunity.StageName} stage. Triggering on-chain event`,
+      );
+
+      const signerWallet = getSignerWallet();
+      const gasPrice = await getAdjustedGasPrice();
+      const factoryContract = getFactory(FACTORY_ADDR, signerWallet);
+
+      const tx = await factoryContract.verifyStatus(
+        signerWallet.address, // TODO: get the manager address
+        opportunity.Id,
+        { gasPrice: gasPrice, gasLimit: 2000000 },
+      );
+
+      console.log('Transaction hash:', tx.hash);
+
+      await tx.wait();
+
+      console.log('Transaction confirmed. Check the blockchain for updates:');
+      console.log(`https://base-sepolia.blockscout.com/tx/${tx.hash}`);
+
       return;
     }
 
     if (opportunity.StageName === 'Negotiation/Review') {
+      console.log(
+        'Opportunity is in Negotiation/Review stage, pushing on-chain:',
+      );
+      // zkEmail = opportunity.OwnerId
+      // verify if has already created account or if not yet registered.
+      // Register if not
+
       // trigger create Opp on chain for further updates
       const config = {
         id: opportunity.Id,
         subject: opportunity.Name,
-        amount: opportunity.Amount,
+        amount: ethers.parseEther(opportunity.Amount.toString()), // convert to wei (1 USD = 10^18 wei)
         rewardPercentage: 1, // always 1% for now
       };
+
+      console.log('Opportunity config:', config);
 
       const owner = await this.getOwnerEmail(opportunity.OwnerId);
       console.log('Owner email:', owner);
 
-      // verify if has already created account or if not yet registered.
-      // Register if not
-
-      console.log(
-        'Opportunity is in Negotiation/Review stage, pushing on-chain',
+      const signerWallet = getSignerWallet();
+      const gasPrice = await getAdjustedGasPrice();
+      const factoryContract = getFactory(FACTORY_ADDR, signerWallet);
+      const tx = await factoryContract.createOpportunity(
+        signerWallet.address, // TODO: get the manager address
+        config,
+        { gasPrice: gasPrice, gasLimit: 2000000 },
       );
+
+      console.log('Transaction hash:', tx.hash);
+      await tx.wait();
+      console.log('Transaction confirmed. Check the blockchain for updates:');
+      console.log(`https://base-sepolia.blockscout.com/tx/${tx.hash}`);
+
       return;
     }
   }
