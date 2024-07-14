@@ -15,6 +15,7 @@ import {
 } from '../web3/web3Provider';
 import { FACTORY_ADDR } from '../web3/consts';
 import { ethers } from 'ethers';
+import { createAccount, isAccountCreated } from '../web3/zkEmail';
 
 @Injectable()
 export class SalesforceService {
@@ -123,6 +124,26 @@ export class SalesforceService {
     }
 
     const opportunity = await this.getOpportunity(id);
+    const signerWallet = getSignerWallet();
+    const factoryContract = getFactory(FACTORY_ADDR, signerWallet);
+
+    const owner = await this.getOwnerEmail(opportunity.OwnerId);
+    console.log('Owner email:', owner);
+    const corporateWallet = await createAccount(owner);
+
+    if (!corporateWallet) {
+      console.error('Failed to create corporate wallet');
+      return;
+    }
+
+    const personalWallet = await factoryContract.managerPersonalWallet(
+      signerWallet.address,
+    ); // TODO: switch to email check
+    console.log('Personal wallet:', personalWallet);
+
+    // Select which account to use for rewards
+    const targetAddress =
+      personalWallet === ethers.ZeroAddress ? corporateWallet : personalWallet;
 
     if (
       opportunity.StageName === 'Closed Lost' ||
@@ -132,12 +153,9 @@ export class SalesforceService {
         `Opportunity ${id} is in ${opportunity.StageName} stage. Triggering on-chain event`,
       );
 
-      const signerWallet = getSignerWallet();
       const gasPrice = await getAdjustedGasPrice();
-      const factoryContract = getFactory(FACTORY_ADDR, signerWallet);
-
       const tx = await factoryContract.verifyStatus(
-        signerWallet.address, // TODO: get the manager address
+        signerWallet.address, // for golden path to simplify registration
         opportunity.Id,
         { gasPrice: gasPrice, gasLimit: 2000000 },
       );
@@ -156,9 +174,6 @@ export class SalesforceService {
       console.log(
         'Opportunity is in Negotiation/Review stage, pushing on-chain:',
       );
-      // zkEmail = opportunity.OwnerId
-      // verify if has already created account or if not yet registered.
-      // Register if not
 
       // trigger create Opp on chain for further updates
       const config = {
@@ -170,14 +185,9 @@ export class SalesforceService {
 
       console.log('Opportunity config:', config);
 
-      const owner = await this.getOwnerEmail(opportunity.OwnerId);
-      console.log('Owner email:', owner);
-
-      const signerWallet = getSignerWallet();
       const gasPrice = await getAdjustedGasPrice();
-      const factoryContract = getFactory(FACTORY_ADDR, signerWallet);
       const tx = await factoryContract.createOpportunity(
-        signerWallet.address, // TODO: get the manager address
+        signerWallet, // for golden path to simplify registration
         config,
         { gasPrice: gasPrice, gasLimit: 2000000 },
       );
@@ -189,6 +199,8 @@ export class SalesforceService {
 
       return;
     }
+
+    console.log('Ignoring event, stage not important for now');
   }
 
   private async authenticate() {
